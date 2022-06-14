@@ -26,7 +26,7 @@ namespace imgv
             InitializeComponent();
             ImageViewer imgv = new ImageViewer();
             this.contentControl.Content = imgv;
-            new Window2().Show();
+            
         }
     }
 }

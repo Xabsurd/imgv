@@ -1,4 +1,5 @@
-﻿using System;
+﻿using OpenCvSharp.WpfExtensions;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -14,7 +15,6 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
-
 namespace imgv
 {
     /// <summary>
@@ -22,26 +22,26 @@ namespace imgv
     /// </summary>
     public partial class ImageViewer : UserControl
     {
-        string path = @"D:\Users\absurd\Pictures\art\95494859_p0.jpg";
-        private BitmapSource img;
-        private bool contain = true;
-        private Size imgSize = new Size(0, 0);
-        public int zoom = 1;
-        public double zoomStep = 0.1;
-        private bool canMove = false;
-        private Size drawSize = new Size(0, 0);
-        private Point drawPoint = new Point(0, 0);
-        private Point downPoint = new Point(0, 0);
         public ImageViewer()
         {
             InitializeComponent();
-            BitmapsourceHelp bh = new BitmapsourceHelp();
-            BitmapsourceHelp.PictureTypeAndName pictureTypeAndName = bh.GetPictureType(path);
-            System.IO.Stream imageStreamSource = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            BitmapDecoder decoder = bh.GetBitmapDecoder(pictureTypeAndName.pictureType, imageStreamSource);
-            img = decoder.Frames[0];
-            imgSize = new Size(img.PixelWidth, img.PixelHeight);
-            //imageStreamSource.Close();
+            delayAction = new DelayAction();
+            baseImg = new OpenCvSharp.Mat(path);
+            baseSource = BitmapSourceConverter.ToBitmapSource(baseImg);
+            JpegBitmapEncoder encoder = new JpegBitmapEncoder();
+            MemoryStream memoryStream = new MemoryStream();
+            bitmapImage = new BitmapImage();
+            encoder.Frames.Add(BitmapFrame.Create(baseSource));
+            encoder.Save(memoryStream);
+
+            memoryStream.Position = 0;
+            bitmapImage.BeginInit();
+            bitmapImage.StreamSource = memoryStream;
+            bitmapImage.EndInit();
+
+            //memoryStream.Close();
+
+            OpenCvSharp.Mat mat = new OpenCvSharp.Mat();
             zoom = 1;
             GC.Collect();
             DrawContain();
@@ -51,9 +51,50 @@ namespace imgv
             this.MouseMove += ImageViewer_MouseMove;
             this.MouseUp += ImageViewer_MouseUp;
         }
+        string path = @"D:\Users\absurd\Pictures\art\95494859.jpg";
+        OpenCvSharp.Mat baseImg;
+        BitmapImage bitmapImage;
+        BitmapSource drawImg;
+        BitmapSource baseSource;
+        DelayAction delayAction;
+        private bool contain = true;
+        public int zoom = 1;
+        public double zoomStep = 0.1;
+        private bool canMove = false;
+        private Size drawSize = new Size(0, 0);
+        private Point drawPoint = new Point(0, 0);
+        private Point downPoint = new Point(0, 0);
+        System.Diagnostics.Stopwatch watch = new System.Diagnostics.Stopwatch();
+        private void ResizeImg(Size size)
+        {
 
+            drawImg = baseSource;
+            DrawImage(drawPoint, drawSize);
+            delayAction.Debounce(100, this.Dispatcher, new Action(async () =>
+            {
+                watch = new System.Diagnostics.Stopwatch();
+                watch.Start();
+                OpenCvSharp.Mat mat = new OpenCvSharp.Mat();
+                float[] data = new float[9] { 0, -1, 0, -1, 5, -1, 0, -1, 0 };
+                OpenCvSharp.Mat kernel = new OpenCvSharp.Mat(3, 3, OpenCvSharp.MatType.CV_32F, data);
+                ////baseImg.Resize(1);
 
+                OpenCvSharp.Cv2.Resize(baseImg, mat, new OpenCvSharp.Size(size.Width, size.Height), 2, 2, OpenCvSharp.InterpolationFlags.Area);
+                
+                
 
+                OpenCvSharp.Cv2.Filter2D(mat, kernel, mat.Type(), kernel, new OpenCvSharp.Point(0, 0));
+                //OpenCvSharp.Cv2.ConvertScaleAbs();
+                //OpenCvSharp.Cv2.BilateralFilter(mat, mat1, 5, 10, 2);
+                drawImg = BitmapSourceConverter.ToBitmapSource(kernel);
+                //drawImg = new TransformedBitmap(baseSource, new ScaleTransform(size.Width / baseSource.Width, size.Height / baseSource.Height));
+                //drawImg = new NearestScale().Scale(bitmapImage, size.Width / baseSource.Width);
+                DrawImage(drawPoint, drawSize);
+                watch.Stop();
+                Debug.WriteLine(watch.Elapsed.TotalMilliseconds);
+            }));
+
+        }
         public void ZoomUp(Point point)
         {
             if (zoom < 10 - zoomStep)
@@ -71,28 +112,31 @@ namespace imgv
         private void DrawContain()
         {
             var wb = this.ActualWidth / this.ActualHeight;
-            var ib = img.Width / img.Height;
+            var ib = (double)baseImg.Width / (double)baseImg.Height;
             if (wb > ib)
             {
                 drawSize.Width = this.ActualHeight * ib;
                 drawSize.Height = this.ActualHeight;
                 drawPoint.X = (this.ActualWidth - drawSize.Width) / 2;
+                drawPoint.Y = 0;
             }
             else
             {
                 drawSize.Width = this.ActualWidth;
                 drawSize.Height = this.ActualWidth / ib;
+                drawPoint.X = 0;
                 drawPoint.Y = (this.ActualHeight - drawSize.Height) / 2;
             }
-            DrawImage(drawPoint, drawSize);
+            ResizeImg(drawSize);
+            //DrawImage(drawPoint, drawSize);
         }
         private void DrawImage(Point location, Size size)
         {
             var drawing = this.dvc.drawingVisual.RenderOpen();
-            drawing.DrawImage(img, new Rect(location, size));
+            drawing.DrawImage(drawImg, new Rect(location, size));
             drawing.Close();
         }
-        private void ImageViewer_SizeChanged(object sender, SizeChangedEventArgs e)
+        private void ImageViewer_SizeChanged(object sender, System.Windows.SizeChangedEventArgs e)
         {
             if (contain)
             {
@@ -101,14 +145,21 @@ namespace imgv
         }
         private void ImageViewer_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            ((UIElement)e.Source).CaptureMouse();
+            ((System.Windows.UIElement)e.Source).CaptureMouse();
             this.canMove = true;
             this.downPoint = e.GetPosition(this);
         }
 
         private void ImageViewer_MouseUp(object sender, MouseButtonEventArgs e)
         {
-            ((UIElement)e.Source).ReleaseMouseCapture();
+            ((System.Windows.UIElement)e.Source).ReleaseMouseCapture();
+            if (canMove)
+            {
+                Point movePoint = e.GetPosition(this);
+                drawPoint = new Point(drawPoint.X + (movePoint.X - downPoint.X), drawPoint.Y + (movePoint.Y - downPoint.Y));
+                DrawImage(drawPoint, drawSize);
+
+            }
             this.canMove = false;
         }
 

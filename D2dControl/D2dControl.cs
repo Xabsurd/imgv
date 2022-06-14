@@ -15,7 +15,7 @@ namespace D2dControl
         private SharpDX.Direct3D11.Device _device = null!;
         private Texture2D? _renderTarget;
         private Dx11ImageSource _d3DSurface = null!;
-        private RenderTarget? _d2DRenderTarget;
+        public RenderTarget? _d2DRenderTarget;
         private SharpDX.Direct2D1.Factory? _d2DFactory;
 
         private readonly Stopwatch _renderTimer = new();
