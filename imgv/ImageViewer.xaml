@@ -6,6 +6,7 @@
              xmlns:local="clr-namespace:imgv"
              mc:Ignorable="d" 
              d:DesignHeight="450" d:DesignWidth="800"
+             Background="#fff"
 >
     <Grid>
         <local:DrawingVisualClass x:Name="dvc"></local:DrawingVisualClass>
