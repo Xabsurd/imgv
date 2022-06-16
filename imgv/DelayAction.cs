@@ -65,18 +65,12 @@ namespace imgv
                 _timerDbc.Elapsed += (o, e) =>
                 {
                     dispatcher.Invoke(action);
-                    try
+
+                    if (_timerDbc != null)
                     {
-                        if (_timerDbc!=null)
-                        {
-                            _timerDbc.Stop();
-                            _timerDbc.Close();
-                            _timerDbc = null;
-                        }
-                        
-                    }
-                    catch (Exception)
-                    {
+                        _timerDbc.Stop();
+                        _timerDbc.Close();
+                        _timerDbc = null;
                     }
                 };
             }

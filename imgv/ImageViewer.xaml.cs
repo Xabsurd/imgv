@@ -15,11 +15,9 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
-using OpenCvSharp.WpfExtensions;
-using Cv2 = OpenCvSharp.Cv2;
-using Mat = OpenCvSharp.Mat;
-using MatType = OpenCvSharp.MatType;
-using InterpolationFlags = OpenCvSharp.InterpolationFlags;
+using System.Reflection;
+using System.Threading;
+
 namespace imgv
 {
     /// <summary>
@@ -31,231 +29,453 @@ namespace imgv
         {
             InitializeComponent();
             delayAction = new DelayAction();
-            baseImg = new Mat(path);
-            baseSource = BitmapSourceConverter.ToBitmapSource(baseImg);
-            JpegBitmapEncoder encoder = new JpegBitmapEncoder();
-            MemoryStream memoryStream = new MemoryStream();
-            bitmapImage = new BitmapImage();
-            encoder.Frames.Add(BitmapFrame.Create(baseSource));
-            encoder.Save(memoryStream);
 
-            memoryStream.Position = 0;
-            bitmapImage.BeginInit();
-            bitmapImage.StreamSource = memoryStream;
-            bitmapImage.EndInit();
 
-            //memoryStream.Close();
+            //RenderOptions.SetEdgeMode((DependencyObject)this.dvc.drawingVisual, EdgeMode.Aliased);
+            //RenderOptions.SetBitmapScalingMode((DependencyObject)this.dvc.drawingVisual, BitmapScalingMode.Fant);
+            var property = typeof(Visual).GetProperty("VisualBitmapScalingMode",
+               BindingFlags.NonPublic | BindingFlags.Instance);
 
-            Mat mat = new Mat();
-            zoom = 1;
-            GC.Collect();
-            ChangeRotate(15);
-            DrawContain();
+            property.SetValue(this.dvc.drawingVisual, BitmapScalingMode.Fant);
+            var property1 = typeof(Visual).GetProperty("VisualEdgeMode",
+               BindingFlags.NonPublic | BindingFlags.Instance);
+
+            property1.SetValue(this.dvc.drawingVisual, EdgeMode.Unspecified);
+
+            this.Loaded += ImageViewer_Loaded;
+
+        }
+
+        private void ImageViewer_Loaded(object sender, RoutedEventArgs e)
+        {
             this.SizeChanged += ImageViewer_SizeChanged;
             this.MouseWheel += ImageViewer_MouseWheel;
             this.MouseDown += ImageViewer_MouseDown;
             this.MouseMove += ImageViewer_MouseMove;
             this.MouseUp += ImageViewer_MouseUp;
+            InitImage(@"D:\Users\absurd\Pictures\art\95494859.jpg");
         }
-        string path = @"D:\Users\absurd\Pictures\art\95494859.jpg";
-        Mat baseImg;
-        BitmapImage bitmapImage;
-        BitmapSource drawImg;
+        BitmapDecoder uriBitmap;
+        public void InitImage(string path)
+        {
+            BitmapsourceHelp bh = new BitmapsourceHelp();
+            BitmapsourceHelp.PictureTypeAndName type = bh.GetPictureType(path);
+            if (type != null)
+            {
+                uriBitmap = BitmapDecoder.Create(
+                  new Uri(path, UriKind.Relative),
+                  BitmapCreateOptions.None,
+                  BitmapCacheOption.Default);
+                //BitmapMetadata meta = uriBitmap.Frames[0].Metadata as BitmapMetadata;
+                //var a =  meta.GetQuery("/grctlext/Delay");
+                baseSource = uriBitmap.Frames[0];
+
+                ChangeRotate(0);
+                ResizeToContain();
+                if (animationThread != null)
+                {
+                    animationThread.Abort();
+
+                }
+                animationThread = new Thread(ChangeGifFrame);
+                animationThread.Start();
+                GC.Collect();
+            }
+
+        }
+
         BitmapSource baseSource;
         DelayAction delayAction;
-        IRect baseRect= new IRect();
+        IRect baseRect = new IRect();
         float sharpness = 1;
-        private bool contain = true;
-        private bool drawBase = true;
+        public bool contain = true;
+        public bool drawBase = true;
         public double zoom = 1;
+        public double minZoom = 1;
+        public double maxZoom = 100;
         public double zoomStep = 0.1;
         private bool canMove = false;
+        private bool canScale = false;
         private Size drawSize = new Size(0, 0);
         private Point drawPoint = new Point(0, 0);
+
+
         private Point downPoint = new Point(0, 0);
-        private Point downPoint_r = new Point(0, 0);
+        private Point downPoint_D = new Point(0, 0);
+        private double downZoom = 1;
+        IRect downRect;
         RotateTransform rotate = new RotateTransform(0);
-        System.Diagnostics.Stopwatch watch = new System.Diagnostics.Stopwatch();
-        private void ResizeImg(Size size)
+        private int frameIndex = 0;
+        Thread animationThread;
+
+        public void ChangeGifFrame()
         {
-            drawBase = true;
-            DrawImage(drawPoint, drawSize);
-            //drawImg = baseSource;
-            if (zoom < 1)
+
+            while (true)
             {
-
-                delayAction.Debounce(100, this.Dispatcher, new Action(() =>
-            {
-                new Task<bool>(() =>
-                 {
-                     drawBase = false;
-                     watch = new System.Diagnostics.Stopwatch();
-                     watch.Start();
-                     Mat mat = new Mat();
-                     Cv2.Resize(baseImg, mat, new OpenCvSharp.Size(size.Width, size.Height), 2, 2, InterpolationFlags.Area);
-                     Mat mat1 = new Mat();
-                     if (sharpness > 1)
-                     {
-                         float h = (sharpness - 1) / -8;
-                         float[] data = new float[9] { h, h, h, h, sharpness, h, h, h, h };
-                         Mat kernel = new Mat(3, 3, MatType.CV_32F, data);
-                         Cv2.Filter2D(mat, mat1, mat.Type(), kernel);
-                     }
-                     this.Dispatcher.Invoke(() =>
-                     {
-                         if (sharpness > 1)
-                         {
-
-
-                             drawImg = BitmapSourceConverter.ToBitmapSource(mat1);
-                         }
-                         else
-                         {
-                             //Mat rotMat = Cv2.GetRotationMatrix2D(new Point2f(0, 0), 45, 1);
-                             //Mat mat1 = new Mat();
-                             //Cv2.WarpAffine(mat,mat1,rotMat,mat.Size());
-                             drawImg = BitmapSourceConverter.ToBitmapSource(mat);
-                         }
-                         DrawImage(drawPoint, drawSize);
-                     });
-
-                     watch.Stop();
-                     Debug.WriteLine("渲染用时" + watch.Elapsed.TotalMilliseconds + "ms");
-                     return true;
-                 }).Start();
-
-            }));
+                this.Dispatcher.Invoke(new Action(() =>
+                {
+                    frameIndex++;
+                    if (frameIndex >= uriBitmap.Frames.Count)
+                    {
+                        frameIndex = 0;
+                    }
+                    baseSource = uriBitmap.Frames[frameIndex];
+                }));
+                Debug.WriteLine(frameIndex);
+                Thread.Sleep(100);
             }
-
-
-        }
-        public void ZoomUp(Point point)
-        {
-            if (zoom < 10 - zoomStep)
-            {
-                ZoomTo(point, zoom + zoomStep);
-            }
-        }
-
-        public void ZoomDown(Point point)
-        {
-            if (zoom > 0 + zoomStep)
-            {
-                ZoomTo(point, zoom - zoomStep);
-            }
-        }
-        public void ZoomTo(Point point, double z)
-        {
-            Point p = RotatePoint(new Point(0, 0), point, rotate.Angle * -1);
-            double x = p.X - drawPoint.X;
-            double y = p.Y - drawPoint.Y;
-            drawPoint.X += x - (x / zoom * z);
-            drawPoint.Y += y - (y / zoom * z);
-            zoom = z;
-            this.drawSize = new Size(baseImg.Width * zoom, baseImg.Height * zoom);
-            ResizeImg(drawSize);
         }
         public void ChangeRotate(double angle)
         {
+
             rotate.Angle = angle;
-            baseRect = RotateRect(new Point(0, 0), new Rect(new Point(0, 0), new Size(baseImg.Width, baseImg.Height)), rotate.Angle);
+            baseRect = RotateRect(new Point(0, 0), new Rect(new Point(0, 0), new Size(baseSource.PixelWidth, baseSource.PixelHeight)), rotate.Angle);
         }
-        private void DrawContain()
+        public void ResizeToContain()
         {
+            contain = true;
             var wb = this.ActualWidth / this.ActualHeight;
             var ib = baseRect.bound.Width / baseRect.bound.Height;
             if (wb > ib)
             {
                 zoom = this.ActualHeight / baseRect.bound.Height;
-                drawSize.Width = baseImg.Width * zoom;
-                drawSize.Height = baseImg.Height * zoom;
+                drawSize.Width = baseSource.PixelWidth * zoom;
+                drawSize.Height = baseSource.PixelHeight * zoom;
                 drawPoint.X = baseRect.tl.X - baseRect.bound.Left * zoom + (this.ActualWidth - baseRect.bound.Width * zoom) / 2;
                 drawPoint.Y = baseRect.tl.Y - baseRect.bound.Top * zoom;
             }
             else
             {
                 zoom = this.ActualWidth / baseRect.bound.Width;
-                drawSize.Width = baseImg.Width * zoom;
-                drawSize.Height = baseImg.Height * zoom;
+                drawSize.Width = baseSource.PixelWidth * zoom;
+                drawSize.Height = baseSource.PixelHeight * zoom;
                 drawPoint.X = baseRect.tl.X - baseRect.bound.Left * zoom;
                 drawPoint.Y = baseRect.tl.Y - baseRect.bound.Top * zoom + (this.ActualHeight - baseRect.bound.Height * zoom) / 2;
             }
             drawPoint = RotatePoint(new Point(0, 0), drawPoint, rotate.Angle * -1);
-
-            Debug.WriteLine("DrawContain" + zoom);
-            ResizeImg(drawSize);
-            //DrawImage(drawPoint, drawSize);
+            minZoom = zoom > 1 ? 1 : zoom;
+            DrawImage(drawPoint, drawSize);
+        }
+        public void ResizeToTile()
+        {
+            contain = false;
+            drawSize = new Size(baseSource.PixelWidth, baseSource.PixelHeight);
+            IRect ir = RotateRect(new Point(0, 0), new Rect(new Point(0, 0), drawSize), rotate.Angle);
+            double diff_width = this.ActualWidth - ir.bound.Width;
+            double diff_height = this.ActualHeight - ir.bound.Height;
+            double diff_x = ir.tl.X - ir.bound.Left;
+            double diff_y = ir.tl.Y - ir.bound.Top;
+            drawPoint = RotatePoint(new Point(0, 0), new Point(diff_width / 2 + diff_x, diff_height / 2 + diff_y), rotate.Angle * -1);
+            zoom = 1;
+            DrawImage(drawPoint, drawSize);
         }
         private void DrawImage(Point location, Size size)
         {
             var drawing = this.dvc.drawingVisual.RenderOpen();
             drawing.PushTransform(rotate);
-            //drawing.PushTransform(new ScaleTransform(-1,1));
-            if (drawBase)
-            {
-                drawing.DrawImage(baseSource, new Rect(location, size));
-            }
-            else
-            {
-                drawing.DrawImage(drawImg, new Rect(location, size));
-            }
-
-
+            drawing.DrawImage(baseSource, new Rect(location, size));
             drawing.Close();
         }
         private void ImageViewer_SizeChanged(object sender, System.Windows.SizeChangedEventArgs e)
         {
             if (contain)
             {
-                this.DrawContain();
+                this.ResizeToContain();
+            }
+            else
+            {
+                var wb = this.ActualWidth / this.ActualHeight;
+                var ib = baseRect.bound.Width / baseRect.bound.Height;
+                if (wb > ib)
+                {
+                    minZoom = this.ActualHeight / baseRect.bound.Height;
+                }
+                else
+                {
+                    minZoom = this.ActualWidth / baseRect.bound.Width;
+                }
+                minZoom = minZoom > 1 ? 1 : minZoom;
+                double diff_width = this.ActualWidth - baseRect.bound.Width * zoom;
+                double diff_height = this.ActualHeight - baseRect.bound.Height * zoom;
+                double diff_x = (baseRect.tl.X - baseRect.bound.Left) * zoom;
+                double diff_y = (baseRect.tl.Y - baseRect.bound.Top) * zoom;
+                bool reDraw = false;
+                Point move = new Point(0, 0);
+                Point v_p = RotatePoint(move, drawPoint, rotate.Angle);
+                if (diff_width > 0)
+                {
+                    reDraw = true;
+
+                    move.X = diff_width / 2 + diff_x;
+
+                }
+                else
+                {
+                    if (baseRect.bound.Width * zoom + v_p.X - diff_x < this.ActualWidth)
+                    {
+                        reDraw = true;
+                        move.X = this.ActualWidth - baseRect.bound.Width * zoom + diff_x;
+                    }
+                    else
+                    {
+                        move.X = v_p.X;
+                    }
+
+                }
+                if (diff_height > 0)
+                {
+                    reDraw = true;
+
+                    move.Y = diff_height / 2 + diff_y;
+                }
+                else
+                {
+                    if (baseRect.bound.Height * zoom + v_p.Y - diff_y < this.ActualHeight)
+                    {
+                        reDraw = true;
+                        move.Y = this.ActualHeight - baseRect.bound.Height * zoom + diff_y;
+                    }
+                    else
+                    {
+                        move.Y = v_p.Y;
+                    }
+                }
+                if (reDraw)
+                {
+                    drawPoint = RotatePoint(new Point(0, 0), move, rotate.Angle * -1);
+                    DrawImage(drawPoint, drawSize);
+                }
             }
         }
         private void ImageViewer_MouseDown(object sender, MouseButtonEventArgs e)
         {
             ((System.Windows.UIElement)e.Source).CaptureMouse();
-            this.canMove = true;
-            this.downPoint = e.GetPosition(this);
-            this.downPoint_r = drawPoint;
+            if (e.LeftButton == MouseButtonState.Pressed)
+            {
+                this.canMove = true;
+                this.downPoint = e.GetPosition(this);
+                this.downPoint_D = RotatePoint(new Point(0, 0), drawPoint, rotate.Angle);
+                downRect = RotateRect(new Point(0, 0), new Rect(drawPoint, drawSize), rotate.Angle);
+            }
+            if (e.RightButton == MouseButtonState.Pressed)
+            {
+                canScale = true;
+                downZoom = zoom;
+                this.downPoint = e.GetPosition(this);
+            }
+
         }
 
         private void ImageViewer_MouseUp(object sender, MouseButtonEventArgs e)
         {
             ((System.Windows.UIElement)e.Source).ReleaseMouseCapture();
-            if (canMove)
-            {
-                Point movePoint = e.GetPosition(this);
-                Point p = RotatePoint(new Point(0, 0), new Point((movePoint.X - downPoint.X), (movePoint.Y - downPoint.Y)), rotate.Angle * -1);
-                drawPoint = new Point(downPoint_r.X + p.X, downPoint_r.Y + p.Y);
-                DrawImage(drawPoint, drawSize);
-            }
+            //if (canMove)
+            //{
+            //    Point movePoint = e.GetPosition(this);
+            //    Point p = RotatePoint(new Point(0, 0), new Point((movePoint.X - downPoint.X), (movePoint.Y - downPoint.Y)), rotate.Angle * -1);
+            //    drawPoint = new Point(downPoint_r.X + p.X, downPoint_r.Y + p.Y);
+            //    DrawImage(drawPoint, drawSize);
+            //}
             this.canMove = false;
+            this.canScale = false;
         }
 
         private void ImageViewer_MouseMove(object sender, MouseEventArgs e)
         {
             if (canMove)
             {
-                Point movePoint = e.GetPosition(this);
-                Point p = RotatePoint(new Point(0, 0), new Point((movePoint.X - downPoint.X), (movePoint.Y - downPoint.Y)), rotate.Angle * -1);
-                drawPoint = new Point(downPoint_r.X + p.X, downPoint_r.Y + p.Y);
-                Debug.WriteLine(drawPoint);
-                Debug.WriteLine(downPoint_r);
-                Debug.WriteLine(downPoint);
+                Point mousePoint = e.GetPosition(this);
+                double left = mousePoint.X - downPoint.X;
+                double top = mousePoint.Y - downPoint.Y;
+                Point move = new Point();
+
+
+                double diff_width = this.ActualWidth - downRect.bound.Width;
+                double diff_height = this.ActualHeight - downRect.bound.Height;
+                double diff_x = downRect.tl.X - downRect.bound.Left;
+                double diff_y = downRect.tl.Y - downRect.bound.Top;
+                if (downRect.bound.Width > this.ActualWidth)
+                {
+                    if (downRect.bound.Left + left < 0)
+                    {
+                        if (downRect.bound.Left + left > diff_width)
+                        {
+                            move.X = downPoint_D.X + left;
+                        }
+                        else
+                        {
+                            move.X = diff_width + diff_x;
+                        }
+                    }
+                    else
+                    {
+                        move.X = diff_x;
+                    }
+                }
+                else
+                {
+                    move.X = diff_width / 2 + diff_x;
+                }
+                if (downRect.bound.Height > this.ActualHeight)
+                {
+                    if (downRect.bound.Top + top < 0)
+                    {
+                        if (downRect.bound.Top + top > diff_height)
+                        {
+                            move.Y = downPoint_D.Y + top;
+                        }
+                        else
+                        {
+                            move.Y = diff_height + diff_y;
+                        }
+                    }
+                    else
+                    {
+                        move.Y = diff_y;
+                    }
+                }
+                else
+                {
+                    move.Y = diff_height / 2 + diff_y;
+                }
+                drawPoint = RotatePoint(new Point(0, 0), move, rotate.Angle * -1);
 
                 DrawImage(drawPoint, drawSize);
+            }
+            else if (canScale)
+            {
+                Point mousePoint = e.GetPosition(this);
+                double diff_y = mousePoint.Y - downPoint.Y;
+                double s = downZoom + diff_y / -200;
+                s = limitedZoom(s);
+                if (s != zoom && s > 0)
+                {
+                    ZoomTo(downPoint, s);
+                }
+
             }
         }
         private void ImageViewer_MouseWheel(object sender, MouseWheelEventArgs e)
         {
             Point wheelPoint = e.GetPosition(this);
+            double s = 0;
             if (e.Delta > 0)
             {
-                ZoomUp(wheelPoint);
+                s = zoom + zoom * zoomStep;
             }
             else
             {
-                ZoomDown(wheelPoint);
+                s = zoom - zoom * zoomStep;
             }
+            s = limitedZoom(s);
+            if (s != zoom && s > 0)
+            {
+                ZoomTo(wheelPoint, s);
+                if (this.canMove)
+                {
+                    this.downPoint = e.GetPosition(this);
+                    this.downPoint_D = RotatePoint(new Point(0, 0), drawPoint, rotate.Angle);
+                    downRect = RotateRect(new Point(0, 0), new Rect(drawPoint, drawSize), rotate.Angle);
+                }
+            }
+
+        }
+        public double limitedZoom(double s)
+        {
+            if (s > maxZoom)
+            {
+                s = maxZoom;
+            }
+            else if (s < minZoom)
+            {
+                s = minZoom;
+            }
+            if (s == minZoom)
+            {
+                if (baseSource.PixelHeight < this.ActualHeight && baseSource.PixelWidth < this.ActualWidth)
+                {
+                    ResizeToTile();
+                }
+                else
+                {
+                    ResizeToContain();
+                }
+
+
+                return -1;
+            }
+            else
+            {
+                contain = false;
+            }
+            return s;
+        }
+        public void ZoomTo(Point point, double z)
+        {
+            this.drawSize = new Size(baseSource.PixelWidth * z, baseSource.PixelHeight * z);
+            //视觉矩形
+            IRect v_Rect = RotateRect(new Point(0, 0), new Rect(drawPoint, drawSize), rotate.Angle);
+            Point move = new Point();
+
+            double x = point.X - v_Rect.tl.X;
+            double y = point.Y - v_Rect.tl.Y;
+            double m_x = x - (x / zoom * z);
+            double m_y = y - (y / zoom * z);
+            double diff_width = this.ActualWidth - v_Rect.bound.Width;
+            double diff_height = this.ActualHeight - v_Rect.bound.Height;
+            double diff_x = v_Rect.tl.X - v_Rect.bound.Left;
+            double diff_y = v_Rect.tl.Y - v_Rect.bound.Top;
+            if (diff_width < 0)
+            {
+                if (v_Rect.bound.Left + m_x < 0)
+                {
+                    if (v_Rect.bound.Left + m_x > diff_width)
+                    {
+                        move.X = v_Rect.tl.X + m_x;
+                    }
+                    else
+                    {
+                        move.X = diff_width + diff_x;
+                    }
+                }
+                else
+                {
+                    move.X = diff_x;
+                }
+            }
+            else
+            {
+                move.X = diff_width / 2 + diff_x;
+            }
+            if (diff_height < 0)
+            {
+                if (v_Rect.bound.Top + m_y < 0)
+                {
+                    if (v_Rect.bound.Top + m_y > diff_height)
+                    {
+                        move.Y = v_Rect.tl.Y + m_y;
+                    }
+                    else
+                    {
+                        move.Y = diff_height + diff_y;
+                    }
+                }
+                else
+                {
+                    move.Y = diff_y;
+                }
+            }
+            else
+            {
+                move.Y = diff_height / 2 + diff_y;
+            }
+
+            //move.X = v_Rect.tl.X + m_x;
+            //move.Y = v_Rect.tl.Y + m_y;
+            drawPoint = RotatePoint(new Point(0, 0), move, rotate.Angle * -1);
+            zoom = z;
+            DrawImage(drawPoint, drawSize);
         }
         public IRect RotateRect(Point p, Rect rect, double angle)
         {
