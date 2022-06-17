@@ -187,8 +187,9 @@ namespace imgv
                         }
                         DrawImage(drawPoint, drawSize);
                     }));
-                    Thread.Sleep(30);
+                    
                 }
+                Thread.Sleep(30);
             }
         }
         public void ChangeRotate(double angle)
