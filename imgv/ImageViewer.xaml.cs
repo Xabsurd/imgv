@@ -51,7 +51,7 @@ namespace imgv
         private bool isAnima = false;
         Thread animationThread;
         Stopwatch stopwatch = new Stopwatch();
-        List<FrameInfo> frameInfos = new List<FrameInfo>();
+        List<GifFrame> gifFrames = new List<GifFrame>();
         DrawingVisual processVisual = new DrawingVisual();
         RenderTargetBitmap processRender;
         public ImageViewer()
@@ -96,8 +96,8 @@ namespace imgv
             InitImage(@"D:\Users\absurd\Pictures\art\95494859.jpg");
 
         }
-      
-        public  void InitImage(string path)
+
+        public void InitImage(string path)
         {
             isAnima = true;
             BitmapsourceHelp bh = new BitmapsourceHelp();
@@ -119,10 +119,28 @@ namespace imgv
                 if (uriBitmap.Frames.Count > 1)
                 {
                     isAnima = true;
-                    frameInfos = new List<FrameInfo>();
+                    gifFrames = new List<GifFrame>();
+
+
                     for (int i = 0; i < uriBitmap.Frames.Count; i++)
                     {
-                        frameInfos.Add(GetFrameInfo(uriBitmap.Frames[i]));
+                        if (i > 0)
+                        {
+                            var frame = uriBitmap.Frames[i];
+                            var info = GetFrameInfo(frame);
+
+                            gifFrames.Add(new GifFrame()
+                            {
+                                info = info,
+                                frame = MakeFrame(gifFrames[0].frame, frame, info, gifFrames[i - 1].frame, gifFrames[i - 1].info)
+                            });
+
+                        }
+                        else
+                        {
+                            gifFrames.Add(new GifFrame() { info = GetFrameInfo(uriBitmap.Frames[i]), frame = uriBitmap.Frames[i] });
+                        }
+
                     }
 
                     frameIndex = 0;
@@ -163,12 +181,12 @@ namespace imgv
             }
             else
             {
-                for (int i = 0; i < frameIndex; i++)
-                {
-                    var frame = uriBitmap.Frames[i];
-                    var info = frameInfos[i];
-                    drawing.DrawImage(frame, new Rect(new Point(location.X + info.Left * zoom, location.Y + info.Top * zoom), new Size(info.Width * zoom, info.Height * zoom)));
-                }
+                //for (int i = 0; i < frameIndex; i++)
+                //{
+                //    var frame = uriBitmap.Frames[i];
+                //    var info = frameInfos[i];
+                //    drawing.DrawImage(frame, new Rect(new Point(location.X + info.Left * zoom, location.Y + info.Top * zoom), new Size(info.Width * zoom, info.Height * zoom)));
+                //}
             }
             drawing.Close();
         }
@@ -187,7 +205,7 @@ namespace imgv
                         }
                         DrawImage(drawPoint, drawSize);
                     }));
-                    
+
                 }
                 Thread.Sleep(30);
             }
@@ -635,6 +653,31 @@ namespace imgv
             }
             return info;
         }
+        private BitmapSource MakeFrame(
+         BitmapSource fullImage,
+         BitmapSource rawFrame, FrameInfo frameInfo,
+         BitmapSource previousFrame, FrameInfo previousFrameInfo)
+        {
+            DrawingVisual visual = new DrawingVisual();
+            using (var context = visual.RenderOpen())
+            {
+                if (previousFrameInfo != null && previousFrame != null &&
+                    previousFrameInfo.DisposalMethod == FrameDisposalMethod.Combine)
+                {
+                    var fullRect = new Rect(0, 0, fullImage.PixelWidth, fullImage.PixelHeight);
+                    context.DrawImage(previousFrame, fullRect);
+                }
+
+                context.DrawImage(rawFrame, frameInfo.Rect);
+            }
+            var bitmap = new RenderTargetBitmap(
+                fullImage.PixelWidth, fullImage.PixelHeight,
+                fullImage.DpiX, fullImage.DpiY,
+                PixelFormats.Pbgra32);
+            bitmap.Render(visual);
+            return bitmap;
+        }
+
         private enum FrameDisposalMethod
         {
             Replace = 0,
@@ -650,8 +693,17 @@ namespace imgv
             public double Height { get; set; }
             public double Left { get; set; }
             public double Top { get; set; }
-        }
+            public Rect Rect
+            {
+                get { return new Rect(Left, Top, Width, Height); }
+            }
 
+        }
+        private class GifFrame
+        {
+            public FrameInfo info { get; set; }
+            public BitmapSource frame { get; set; }
+        }
         public class IRect
         {
             public Point tl { get; set; }
