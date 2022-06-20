@@ -17,7 +17,7 @@ using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Reflection;
 using System.Threading;
-
+using System.Windows.Threading;
 namespace imgv
 {
     /// <summary>
@@ -47,13 +47,7 @@ namespace imgv
         private double downZoom = 1;
         IRect downRect;
         RotateTransform rotate = new RotateTransform(0);
-        private int frameIndex = 0;
-        private bool isAnima = false;
-        Thread animationThread;
-        Stopwatch stopwatch = new Stopwatch();
-        List<GifFrame> gifFrames = new List<GifFrame>();
-        DrawingVisual processVisual = new DrawingVisual();
-        RenderTargetBitmap processRender;
+
         public ImageViewer()
         {
             InitializeComponent();
@@ -77,29 +71,16 @@ namespace imgv
 
         private void ImageViewer_Loaded(object sender, RoutedEventArgs e)
         {
-            //media.Open(new Uri(@"D:\Users\absurd\Desktop\outputgif\5.gif", UriKind.Relative));
-
-            //media.Play();
-            //media.MediaEnded += (o, e) =>
-            //{
-            //    media.Position = TimeSpan.Zero;
-            //    media.Play();
-            //};
-            //var drawing = this.dvc.drawingVisual.RenderOpen();
-            //drawing.DrawVideo(media, new Rect(0, 0, this.ActualWidth, this.ActualHeight));
-            //drawing.Close();
             this.SizeChanged += ImageViewer_SizeChanged;
             this.MouseWheel += ImageViewer_MouseWheel;
             this.MouseDown += ImageViewer_MouseDown;
             this.MouseMove += ImageViewer_MouseMove;
             this.MouseUp += ImageViewer_MouseUp;
             InitImage(@"D:\Users\absurd\Pictures\art\95494859.jpg");
-
         }
 
         public void InitImage(string path)
         {
-            isAnima = true;
             BitmapsourceHelp bh = new BitmapsourceHelp();
             BitmapsourceHelp.PictureTypeAndName type = bh.GetPictureType(path);
             if (type != null)
@@ -108,108 +89,32 @@ namespace imgv
               new Uri(path, UriKind.Relative),
               BitmapCreateOptions.None,
               BitmapCacheOption.Default);
-                //BitmapMetadata meta = uriBitmap.Frames[0].Metadata as BitmapMetadata;
-                //var a =  meta.GetQuery("/grctlext/Delay");
-                baseSource = uriBitmap.Frames[0];
-                //FrameInfo info = GetFrameInfo(uriBitmap.Frames[0]);
-                //return;
-                isAnima = false;
-                ChangeRotate(0);
-                ResizeToContain();
-                if (uriBitmap.Frames.Count > 1)
+                if (uriBitmap.Frames.Count <= 1)
                 {
-                    isAnima = true;
-                    gifFrames = new List<GifFrame>();
-
-
-                    for (int i = 0; i < uriBitmap.Frames.Count; i++)
-                    {
-                        if (i > 0)
-                        {
-                            var frame = uriBitmap.Frames[i];
-                            var info = GetFrameInfo(frame);
-
-                            gifFrames.Add(new GifFrame()
-                            {
-                                info = info,
-                                frame = MakeFrame(gifFrames[0].frame, frame, info, gifFrames[i - 1].frame, gifFrames[i - 1].info)
-                            });
-
-                        }
-                        else
-                        {
-                            gifFrames.Add(new GifFrame() { info = GetFrameInfo(uriBitmap.Frames[i]), frame = uriBitmap.Frames[i] });
-                        }
-
-                    }
-
-                    frameIndex = 0;
-                    try
-                    {
-                        if (animationThread == null)
-                        {
-
-                            animationThread = new Thread(ChangeGifFrame);
-                            animationThread.Start();
-                        }
-                    }
-                    catch (Exception)
-                    {
-
-                        Debug.WriteLine("线程关闭");
-                    }
-
-
+                    baseSource = uriBitmap.Frames[0];
+                    ChangeRotate(0);
+                    ResizeToContain();
                 }
-                //if (animationThread != null)
-                //{
-                //    animationThread.t();
+                else
+                {
+                }
 
-                //}
-
-                GC.Collect();
             }
-
         }
+
+
         private void DrawImage(Point location, Size size)
         {
             var drawing = this.dvc.drawingVisual.RenderOpen();
             drawing.PushTransform(rotate);
-            if (!isAnima)
-            {
-                drawing.DrawImage(baseSource, new Rect(location, size));
-            }
-            else
-            {
-                //for (int i = 0; i < frameIndex; i++)
-                //{
-                //    var frame = uriBitmap.Frames[i];
-                //    var info = frameInfos[i];
-                //    drawing.DrawImage(frame, new Rect(new Point(location.X + info.Left * zoom, location.Y + info.Top * zoom), new Size(info.Width * zoom, info.Height * zoom)));
-                //}
-            }
+            drawing.DrawImage(baseSource, new Rect(location, size));
             drawing.Close();
         }
-        public void ChangeGifFrame()
+        private void DrawImage()
         {
-            while (true)
-            {
-                if (isAnima)
-                {
-                    this.Dispatcher.Invoke(new Action(() =>
-                    {
-                        frameIndex++;
-                        if (frameIndex >= uriBitmap.Frames.Count)
-                        {
-                            frameIndex = 0;
-                        }
-                        DrawImage(drawPoint, drawSize);
-                    }));
-
-                }
-                Thread.Sleep(30);
-            }
+            this.DrawImage(drawPoint, drawSize);
         }
+
         public void ChangeRotate(double angle)
         {
 
