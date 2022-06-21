@@ -18,6 +18,10 @@ using System.Windows.Shapes;
 using System.Reflection;
 using System.Threading;
 using System.Windows.Threading;
+using System.Runtime.InteropServices;
+using ImageAnimator = System.Drawing.ImageAnimator;
+using System.Windows.Interop;
+
 namespace imgv
 {
     /// <summary>
@@ -25,23 +29,20 @@ namespace imgv
     /// </summary>
     public partial class ImageViewer : UserControl
     {
-        BitmapDecoder uriBitmap;
+
         BitmapSource baseSource;
-        DelayAction delayAction;
+        private System.Drawing.Bitmap gifBitmap;// gif动画的System.Drawing.Bitmap
         IRect baseRect = new IRect();
-        float sharpness = 1;
         public bool contain = true;
-        public bool drawBase = true;
         public double zoom = 1;
         public double minZoom = 1;
         public double maxZoom = 100;
         public double zoomStep = 0.1;
         private bool canMove = false;
         private bool canScale = false;
+        private bool isAnima = false;
         private Size drawSize = new Size(0, 0);
         private Point drawPoint = new Point(0, 0);
-
-
         private Point downPoint = new Point(0, 0);
         private Point downPoint_D = new Point(0, 0);
         private double downZoom = 1;
@@ -51,11 +52,7 @@ namespace imgv
         public ImageViewer()
         {
             InitializeComponent();
-            delayAction = new DelayAction();
 
-
-            //RenderOptions.SetEdgeMode((DependencyObject)this.dvc.drawingVisual, EdgeMode.Aliased);
-            //RenderOptions.SetBitmapScalingMode((DependencyObject)this.dvc.drawingVisual, BitmapScalingMode.Fant);
             var property = typeof(Visual).GetProperty("VisualBitmapScalingMode",
                BindingFlags.NonPublic | BindingFlags.Instance);
 
@@ -76,27 +73,35 @@ namespace imgv
             this.MouseDown += ImageViewer_MouseDown;
             this.MouseMove += ImageViewer_MouseMove;
             this.MouseUp += ImageViewer_MouseUp;
-            InitImage(@"D:\Users\absurd\Pictures\art\95494859.jpg");
+            //InitImage(@"D:\Users\absurd\Pictures\art\95494859.jpg");
         }
 
         public void InitImage(string path)
         {
             BitmapsourceHelp bh = new BitmapsourceHelp();
             BitmapsourceHelp.PictureTypeAndName type = bh.GetPictureType(path);
+            ClearGif();
             if (type != null)
             {
-                uriBitmap = BitmapDecoder.Create(
-              new Uri(path, UriKind.Relative),
-              BitmapCreateOptions.None,
-              BitmapCacheOption.Default);
-                if (uriBitmap.Frames.Count <= 1)
+                if (type.name != "gif")
                 {
-                    baseSource = uriBitmap.Frames[0];
+                    BitmapDecoder bitmapDecoder = BitmapDecoder.Create(
+                      new Uri(path, UriKind.Relative),
+                      BitmapCreateOptions.None,
+                      BitmapCacheOption.Default);
+                    baseSource = bitmapDecoder.Frames[0];
+
+                    isAnima = false;
                     ChangeRotate(0);
                     ResizeToContain();
                 }
                 else
                 {
+                    this.gifBitmap = new System.Drawing.Bitmap(path);
+                    this.GetBitmapSource();
+                    ChangeRotate(0);
+                    ResizeToContain();
+                    StartAnimate();
                 }
 
             }
@@ -159,7 +164,78 @@ namespace imgv
             zoom = 1;
             DrawImage(drawPoint, drawSize);
         }
+        public void ClearGif()
+        {
+            StopAnimate();
+            if (gifBitmap != null)
+            {
+                this.gifBitmap.Dispose();
+                this.gifBitmap = null;
+            }
+            if (this.baseSource != null)
+            {
+                baseSource.Freeze();
+                baseSource = null;
+            }
+            GC.Collect();
 
+        }
+        /// <summary>
+        /// Start
+        /// </summary>
+        public void StartAnimate()
+        {
+            ImageAnimator.Animate(this.gifBitmap, this.OnFrameChanged);
+        }
+
+        /// <summary>
+        /// Stop
+        /// </summary>
+        public void StopAnimate()
+        {
+            ImageAnimator.StopAnimate(this.gifBitmap, this.OnFrameChanged);
+        }
+        /// <summary>
+        /// 从System.Drawing.Bitmap中获得用于显示的那一帧图像的BitmapSource
+        /// </summary>
+        /// <returns></returns>
+        private void GetBitmapSource()
+        {
+            IntPtr handle = IntPtr.Zero;
+            try
+            {
+                handle = this.gifBitmap.GetHbitmap();
+                this.baseSource = Imaging.CreateBitmapSourceFromHBitmap(handle, IntPtr.Zero, System.Windows.Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+            }
+            finally
+            {
+                if (handle != IntPtr.Zero)
+                {
+                    DeleteObject(handle);
+                }
+            }
+            //return this.baseSource;
+        }
+        /// <summary>
+        /// 帧处理
+        /// </summary>
+        private void OnFrameChanged(object sender, EventArgs e)
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+            {
+                if (this.gifBitmap != null)
+                {
+                    ImageAnimator.UpdateFrames(); // 更新到下一帧
+                    if (this.baseSource != null)
+                    {
+                        this.baseSource.Freeze();
+                    }
+                    this.GetBitmapSource();
+                    DrawImage();
+                    this.InvalidateVisual();
+                }
+            }));
+        }
         private void ImageViewer_SizeChanged(object sender, System.Windows.SizeChangedEventArgs e)
         {
             if (contain)
@@ -253,13 +329,6 @@ namespace imgv
         private void ImageViewer_MouseUp(object sender, MouseButtonEventArgs e)
         {
             ((System.Windows.UIElement)e.Source).ReleaseMouseCapture();
-            //if (canMove)
-            //{
-            //    Point movePoint = e.GetPosition(this);
-            //    Point p = RotatePoint(new Point(0, 0), new Point((movePoint.X - downPoint.X), (movePoint.Y - downPoint.Y)), rotate.Angle * -1);
-            //    drawPoint = new Point(downPoint_r.X + p.X, downPoint_r.Y + p.Y);
-            //    DrawImage(drawPoint, drawSize);
-            //}
             this.canMove = false;
             this.canScale = false;
         }
@@ -487,101 +556,13 @@ namespace imgv
             double y1 = x * Math.Sin(radian) + y * Math.Cos(radian) + p1.Y;
             return new Point(x1, y1);
         }
-        public BitmapSource MixBitmapSource(BitmapSource bs1, BitmapSource bs2)
-        {
-            DrawingVisual dv = new DrawingVisual();
-            RenderTargetBitmap render = new RenderTargetBitmap(bs1.PixelWidth, bs2.PixelHeight, bs1.DpiX, bs2.DpiY, PixelFormats.Default);
-            DrawingContext dc = dv.RenderOpen();
-            dc.DrawImage(bs1, new Rect(0, 0, bs1.PixelWidth, bs1.PixelHeight));
-            dc.DrawImage(bs2, new Rect(0, 0, bs1.PixelWidth, bs1.PixelHeight));
-            dc.Close();
-            render.Render(dv);
-            return render;
-        }
-        private static FrameInfo GetFrameInfo(BitmapFrame frame)
-        {
 
-            var info = new FrameInfo
-            {
-                Delay = 100,
-                DisposalMethod = FrameDisposalMethod.Replace,
-                Width = frame.PixelWidth,
-                Height = frame.PixelHeight,
-                Left = 0,
-                Top = 0
-            };
-            const string delayQuery = "/grctlext/Delay";
-            const string disposalQuery = "/grctlext/Disposal";
-            const string widthQuery = "/imgdesc/Width";
-            const string heightQuery = "/imgdesc/Height";
-            const string leftQuery = "/imgdesc/Left";
-            const string topQuery = "/imgdesc/Top";
-            try
-            {
-                BitmapMetadata metadata = frame.Metadata as BitmapMetadata;
-                var delay = metadata.GetQuery(delayQuery);
-                var dis = metadata.GetQuery(disposalQuery);
-                var width = metadata.GetQuery(widthQuery);
-                var height = metadata.GetQuery(heightQuery);
-                var left = metadata.GetQuery(leftQuery);
-                var top = metadata.GetQuery(topQuery);
-                if (delay != null)
-                {
-                    info.Delay = Convert.ToInt32(delay);
-                }
-                if (dis != null)
-                {
-
-                    info.DisposalMethod = (FrameDisposalMethod)Convert.ToInt32(dis);
-                }
-                if (width != null)
-                {
-                    info.Width = Convert.ToDouble(width);
-                }
-                if (height != null)
-                {
-                    info.Height = Convert.ToDouble(height);
-                }
-                if (top != null)
-                {
-                    info.Top = Convert.ToDouble(top);
-                }
-                if (left != null)
-                {
-                    info.Left = Convert.ToDouble(left);
-                }
-            }
-            catch (Exception)
-            {
-
-                return null;
-            }
-            return info;
-        }
-        private BitmapSource MakeFrame(
-         BitmapSource fullImage,
-         BitmapSource rawFrame, FrameInfo frameInfo,
-         BitmapSource previousFrame, FrameInfo previousFrameInfo)
-        {
-            DrawingVisual visual = new DrawingVisual();
-            using (var context = visual.RenderOpen())
-            {
-                if (previousFrameInfo != null && previousFrame != null &&
-                    previousFrameInfo.DisposalMethod == FrameDisposalMethod.Combine)
-                {
-                    var fullRect = new Rect(0, 0, fullImage.PixelWidth, fullImage.PixelHeight);
-                    context.DrawImage(previousFrame, fullRect);
-                }
-
-                context.DrawImage(rawFrame, frameInfo.Rect);
-            }
-            var bitmap = new RenderTargetBitmap(
-                fullImage.PixelWidth, fullImage.PixelHeight,
-                fullImage.DpiX, fullImage.DpiY,
-                PixelFormats.Pbgra32);
-            bitmap.Render(visual);
-            return bitmap;
-        }
+        /// <summary>
+        /// 删除本地 bitmap resource
+        /// </summary>
+        [DllImport("gdi32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool DeleteObject(IntPtr hObject);
 
         private enum FrameDisposalMethod
         {

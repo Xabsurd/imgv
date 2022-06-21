@@ -25,7 +25,6 @@ namespace imgv
         public MainWindow()
         {
             InitializeComponent();
-            
             imgv = new ImageViewer();
             this.contentControl.Content = imgv;
             this.KeyDown += MainWindow_KeyDown;

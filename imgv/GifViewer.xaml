@@ -1,15 +1,12 @@
-﻿<UserControl x:Class="imgv.ImageViewer"
+﻿<UserControl x:Name="userControl" x:Class="imgv.GifViewer"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:local="clr-namespace:imgv"
              mc:Ignorable="d" 
-             d:DesignHeight="450" d:DesignWidth="800"
-             Background="#fff"
->
-    <Grid >
-        <local:DrawingVisualClass x:Name="dvc"></local:DrawingVisualClass>
-        <!--<local:GifViewer x:Name="gifViewer" HorizontalAlignment="Left" VerticalAlignment="Top"></local:GifViewer>-->
+             d:DesignHeight="450" d:DesignWidth="800">
+    <Grid>
+        <Image x:Name="imgGifShow" Stretch="Fill" VerticalAlignment="Top" HorizontalAlignment="Left"/>
     </Grid>
 </UserControl>

@@ -40,7 +40,6 @@ namespace imgv
                     default:
                         return null;
                 }
-
             }
             catch
             {
