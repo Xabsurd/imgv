@@ -40,7 +40,7 @@ namespace imgv
         public double zoomStep = 0.1;
         private bool canMove = false;
         private bool canScale = false;
-        private bool isAnima = false;
+        private bool inited = false;
         private Size drawSize = new Size(0, 0);
         private Point drawPoint = new Point(0, 0);
         private Point downPoint = new Point(0, 0);
@@ -61,13 +61,13 @@ namespace imgv
                BindingFlags.NonPublic | BindingFlags.Instance);
 
             property1.SetValue(this.dvc.drawingVisual, EdgeMode.Unspecified);
-            this.Loaded += ImageViewer_Loaded;
 
 
         }
 
-        private void ImageViewer_Loaded(object sender, RoutedEventArgs e)
+        private void InitEvent()
         {
+            this.inited = true;
             this.SizeChanged += ImageViewer_SizeChanged;
             this.MouseWheel += ImageViewer_MouseWheel;
             this.MouseDown += ImageViewer_MouseDown;
@@ -83,6 +83,10 @@ namespace imgv
             ClearGif();
             if (type != null)
             {
+                if (!inited)
+                {
+                    InitEvent();
+                }
                 if (type.name != "gif")
                 {
                     BitmapDecoder bitmapDecoder = BitmapDecoder.Create(
@@ -90,8 +94,6 @@ namespace imgv
                       BitmapCreateOptions.None,
                       BitmapCacheOption.Default);
                     baseSource = bitmapDecoder.Frames[0];
-
-                    isAnima = false;
                     ChangeRotate(0);
                     ResizeToContain();
                 }
