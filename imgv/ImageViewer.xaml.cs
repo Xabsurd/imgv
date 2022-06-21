@@ -73,7 +73,6 @@ namespace imgv
             this.MouseDown += ImageViewer_MouseDown;
             this.MouseMove += ImageViewer_MouseMove;
             this.MouseUp += ImageViewer_MouseUp;
-            //InitImage(@"D:\Users\absurd\Pictures\art\95494859.jpg");
         }
 
         public void InitImage(string path)
