@@ -1,3 +1,3 @@
 # imgv
-On hold for now, as I can't find a good way to draw gifs in DrawingVisual.
-暂时搁置，因为我找不到好的办法在DrawingVisual 中绘制gif
+使用WPF做的上图软件
+GifViewer是WPF中播放gif的一种实现方式
